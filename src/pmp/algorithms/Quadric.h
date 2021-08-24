@@ -34,8 +34,7 @@ public: // clang-format off
     {}
 
     //! construct from point and normal specifying a plane
-    Quadric(const Normal& n, const Point& p)
-    {
+    Quadric(const Normal& n, const Point& p) {
         *this = Quadric(n[0], n[1], n[2], -dot(n,p));
     }
 
@@ -43,8 +42,7 @@ public: // clang-format off
     void clear() { a_ = b_ = c_ = d_ = e_ = f_ = g_ = h_ = i_ = j_ = 0.0; }
 
     //! add given quadric to this quadric
-    Quadric& operator+=(const Quadric& q)
-    {
+    Quadric& operator+=(const Quadric& q){
         a_ += q.a_; b_ += q.b_; c_ += q.c_; d_ += q.d_;
         e_ += q.e_; f_ += q.f_; g_ += q.g_;
         h_ += q.h_; i_ += q.i_;
@@ -53,8 +51,7 @@ public: // clang-format off
     }
 
     //! multiply quadric by a scalar
-    Quadric& operator*=(double s)
-    {
+    Quadric& operator*=(double s){
         a_ *= s; b_ *= s; c_ *= s;  d_ *= s;
         e_ *= s; f_ *= s; g_ *= s;
         h_ *= s; i_ *= s;
@@ -63,13 +60,23 @@ public: // clang-format off
     }
 
     //! evaluate quadric Q at position p by computing (p^T * Q * p)
-    double operator()(const Point& p) const
-    {
+    double operator()(const Point& p) const {
         const double x(p[0]), y(p[1]), z(p[2]);
         return a_*x*x + 2.0*b_*x*y + 2.0*c_*x*z + 2.0*d_*x
             +  e_*y*y + 2.0*f_*y*z + 2.0*g_*y
             +  h_*z*z + 2.0*i_*z
             +  j_;
+    }
+
+    double vertex_gradient(const Normal& n, const Point & p) const {
+        double nAn = (a_*n[0] + b_*n[1] + c_*n[2])*n[0]
+                    +(b_*n[0] + e_*n[1] + f_*n[2])*n[1]
+                    +(c_*n[0] + f_*n[1] + h_*n[2])*n[2];
+        double vAn = (a_*n[0] + b_*n[1] + c_*n[2])*p[0]
+                     +(b_*n[0] + e_*n[1] + f_*n[2])*p[1]
+                     +(c_*n[0] + f_*n[1] + h_*n[2])*p[2];
+        double bn = n[0] * d_ + n[1] * g_ + n[2] * i_;
+        return -(vAn + bn)/nAn;
     }
 
 private:

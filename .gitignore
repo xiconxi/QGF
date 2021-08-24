@@ -4,3 +4,5 @@ debug
 .vscode
 .jekyll-cache
 .DS_store
+cmake-build*
+.idea

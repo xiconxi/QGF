@@ -117,6 +117,9 @@ else()
     add_executable(mpview mpview.cpp MeshProcessingViewer.cpp
                           MeshProcessingViewer.h)
     target_link_libraries(mpview pmp_vis)
+
+    add_executable(QGF smoothing_QGF.cpp)
+    target_link_libraries(QGF pmp_vis)
   endif()
 
 endif()
