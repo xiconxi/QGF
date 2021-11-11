@@ -118,8 +118,9 @@ else()
                           MeshProcessingViewer.h)
     target_link_libraries(mpview pmp_vis)
 
+    find_package(OpenMP QUIET)
     add_executable(QGF smoothing_QGF.cpp)
-    target_link_libraries(QGF pmp_vis)
+    target_link_libraries(QGF pmp_vis OpenMP::OpenMP_CXX)
   endif()
 
 endif()

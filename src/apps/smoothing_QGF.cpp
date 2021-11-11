@@ -8,6 +8,13 @@
 #include <pmp/algorithms/Quadric.h>
 #include <pmp/algorithms/DifferentialGeometry.h>
 #include <pmp/algorithms/SurfaceNormals.h>
+#include <set>
+#include <omp.h>
+
+
+#define OMP_PARALLEL _Pragma("omp parallel")
+#define OMP_FOR _Pragma("omp for")
+#define OMP_SINGLE _Pragma("omp single")
 
 namespace pmp {
 
@@ -32,51 +39,84 @@ public:
 
     void do_smoothing(unsigned int iters, double s_b, double s_s, double s_r) {
         compute_face_quadric();
-        compute_vertex_quadric(s_b);
         for(int i = 0; i < iters; i++) {
-            quadric_diffusion(10, s_s, s_r);
-            quadric_motion(20);
+            quadric_diffusion(5, s_s, s_r);
+            compute_vertex_quadric(s_b);
+            quadric_motion(10);
         }
     }
-
-
 
 private:
 
     void quadric_motion(int n_iter) {
         auto vnormal = mesh_.vertex_property<Normal>("v:normal");
         for(int i_iter = 0; i_iter < n_iter; i_iter++){
+            std::cout <<"\r motion " << i_iter << std::endl;
             SurfaceNormals::compute_vertex_normals(mesh_);
-            for (auto v : mesh_.vertices()) {
-                double lambda = v_quadric_[v].vertex_gradient(vnormal[v], mesh_.position(v));
-                mesh_.position(v) += vnormal[v] * lambda;
+            double max_lambda = 0;
+            OMP_PARALLEL
+            {
+                OMP_FOR
+                for (int i = 0; i < mesh_.n_vertices(); i++)
+                {
+                    auto v = pmp::Vertex(i);
+                    double lambda = v_quadric_[v].vertex_gradient(
+                        vnormal[v], mesh_.position(v));
+                    max_lambda = std::max(max_lambda, lambda);
+                    if (norm(vnormal[v]) == NAN || lambda == NAN)
+                        continue;
+                    mesh_.position(v) += vnormal[v] * lambda;
+                }
             }
         }
     }
 
+    double quadric_distance(const Quadric& Q, Face f) {
+        double quadric = 0;
+        auto vit = mesh_.vertices(f);
+        quadric += ( Q( mesh_.position(*vit) ) );
+        quadric += ( Q( mesh_.position(*++vit) ) );
+        quadric += ( Q( mesh_.position(*++vit) ) );
+        return quadric* triangle_area(mesh_, f)/3.0f;
+    }
+
     void quadric_diffusion(int n_iter, double sigma_s = 0.1, double sigma_r = 0.1) {
-        VertexProperty<Quadric> new_Qv = mesh_.vertex_property<Quadric>("f:quadric_");
+        FaceProperty<Quadric> new_Qf = mesh_.face_property<Quadric>("f:quadric_");
         for(int i_iter = 0; i_iter < n_iter; i_iter++) {
-            for(auto v: mesh_.vertices()) {
+            std::cout <<"\r diffusion " << i_iter <<std::endl;
+            OMP_PARALLEL { OMP_FOR
+            for(int i = 0; i < mesh_.n_faces(); i++) {
+                auto f = pmp::Face(i);
                 double ww = 0, w_s, w_r, w;
-                new_Qv[v] = Quadric(0, 0, 0, 0);
-                for(Vertex vv: mesh_.vertices(v) ) {
-                    double d = norm(mesh_.position(vv) - mesh_.position(v));
-                    w_s = std::exp(-0.5 * d * d / (sigma_s * sigma_s)) ;
-                    double qem = v_quadric_[vv](mesh_.position(v));
-                    w_r = std::exp(-0.5 * qem * qem / (sigma_r * sigma_r)) ;
-                    w = w_s * w_r * voronoi_area(mesh_, vv);
-                    Quadric _quad = v_quadric_[vv];
+                new_Qf[f] = Quadric(0, 0, 0, 0);
+                std::set<Face> neigh_f;
+                for(Vertex v1: mesh_.vertices(f) )
+                    for(Face vf: mesh_.faces(v1) )
+                        neigh_f.insert(vf);
+
+                for(auto ff: neigh_f) {
+                    double d = sqrnorm(centroid(mesh_, ff) - centroid(mesh_, f));
+                    w_s = std::exp(-0.5 * d / (sigma_s * sigma_s)) ;
+
+                    double dis = quadric_distance(f_quadric_[f], ff);
+
+                    w_r = std::exp(-0.5 * dis / (sigma_r * sigma_r)) ;
+                    w = w_s * w_r;
+                    Quadric _quad = f_quadric_[ff];
                     _quad *= w;
-                    new_Qv[v] += _quad;
+                    new_Qf[f] += _quad;
                     ww += w;
                 }
-                new_Qv[v] *= 1.0/ww;
+                new_Qf[f] *= 1.0/ww;
+            }}
+            OMP_PARALLEL { OMP_FOR
+                for(int i = 0; i < mesh_.n_faces(); i++){
+                    auto f = pmp::Face(i);
+                    f_quadric_[f] = new_Qf[f];
+                }
             }
-            for(auto v: mesh_.vertices())
-                v_quadric_[v] = new_Qv[v];
         }
-        mesh_.remove_vertex_property(new_Qv);
+        mesh_.remove_face_property(new_Qf);
     }
 
     Quadric compute_face_quadric(Face f) {
@@ -94,8 +134,8 @@ private:
         double ww = 0, w;
         Quadric Q_v;
         for(Face f: mesh_.faces(v) ) {
-            double d = norm(centroid(mesh_, f) - mesh_.position(v));
-            w = std::exp(-0.5 * d * d / (sigma_b * sigma_b)) * triangle_area(mesh_, f);
+            double d = sqrnorm(centroid(mesh_, f) - mesh_.position(v));
+            w = std::exp(-0.5 * d / (sigma_b * sigma_b)) ;
 
             Quadric f_quadric = f_quadric_[f];
             f_quadric *= w;
@@ -166,11 +206,11 @@ void Viewer::process_imgui()
     if (ImGui::CollapsingHeader("Smoothing", ImGuiTreeNodeFlags_DefaultOpen))
     {
         {
-            static int n_iter = 0;
+            static int n_iter = 1;
 
-            static float sigma_b = 0.1;
-            static float sigma_s = 0.1;
-            static float sigma_r = 0.1;
+            static float sigma_b = 1;
+            static float sigma_s = 2;
+            static float sigma_r = 5;
             ImGui::PushItemWidth(100);
             ImGui::SliderFloat("sigma_b", &sigma_b, 0, 5);
             ImGui::PopItemWidth();
@@ -190,6 +230,7 @@ void Viewer::process_imgui()
                 double mean_edge_l = qgfSmoothing.mean_edge_length() * 2;
                 qgfSmoothing.do_smoothing(n_iter, mean_edge_l*sigma_b, mean_edge_l*sigma_s, mean_edge_l * sigma_r);
                 update_mesh();
+                mesh_.write("output1.off");
             }
         }
         static int weight = 0;
@@ -208,47 +249,6 @@ void Viewer::process_imgui()
             update_mesh();
         }
 
-        ImGui::Spacing();
-        ImGui::Spacing();
-
-        static float timestep = 0.001;
-        float lb = uniform_laplace ? 1.0 : 0.001;
-        float ub = uniform_laplace ? 100.0 : 1.0;
-        ImGui::PushItemWidth(100);
-        ImGui::SliderFloat("TimeStep", &timestep, lb, ub);
-        ImGui::PopItemWidth();
-
-        if (ImGui::Button("Implicit Smoothing"))
-        {
-            // does the mesh have a boundary?
-            bool has_boundary = false;
-            for (auto v : mesh_.vertices())
-                if (mesh_.is_boundary(v))
-                    has_boundary = true;
-
-            // only re-scale if we don't have a (fixed) boundary
-            bool rescale = !has_boundary;
-
-            Scalar dt =
-                uniform_laplace ? timestep : timestep * radius_ * radius_;
-            try
-            {
-                smoother_.implicit_smoothing(dt, uniform_laplace, rescale);
-            }
-            catch (const SolverException& e)
-            {
-                std::cerr << e.what() << std::endl;
-                return;
-            }
-            update_mesh();
-        }
-
-
-        if (ImGui::Button("QGF"))
-        {
-
-            update_mesh();
-        }
     }
 }
 

@@ -79,6 +79,10 @@ public: // clang-format off
         return -(vAn + bn)/nAn;
     }
 
+    Vector<Scalar, 3> gradient(const Point & p) const {
+        return Point(a_*p[0]+c_*p[1]+b_*p[2], b_*p[0]+e_*p[1]+f_*p[2], c_*p[0]+f_*p[1] + h_*p[2]) + 2*Point(d_, g_, i_);
+    }
+
 private:
 
     double a_, b_, c_, d_,
