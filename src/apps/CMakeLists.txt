@@ -121,6 +121,11 @@ else()
     find_package(OpenMP QUIET)
     add_executable(QGF smoothing_QGF.cpp)
     target_link_libraries(QGF pmp_vis OpenMP::OpenMP_CXX)
+
+    include_directories(${PROJECT_SOURCE_DIR}/external/probabilistic-quadrics)
+
+    add_executable(PQGF PQGF.cpp)
+    target_link_libraries(PQGF pmp_vis OpenMP::OpenMP_CXX)
   endif()
 
 endif()

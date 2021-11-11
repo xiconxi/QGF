@@ -10,3 +10,6 @@
 [submodule "external/eigen"]
 	path = external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
+[submodule "external/probabilistic-quadrics"]
+	path = external/probabilistic-quadrics
+	url = https://github.com/Philip-Trettner/probabilistic-quadrics
