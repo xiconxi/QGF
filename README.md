@@ -12,7 +12,7 @@ See also. [github:probabilistic-quadrics](https://github.com/Philip-Trettner/pro
 Clone the repository:
 
 ```sh
-git clone --recursive https://github.com/pmp-library/pmp-library.git
+git clone --recursive https://github.com/xiconxi/QGF.git
 ```
 
 Configure and build:
